@@ -4,6 +4,7 @@ import {
   StackActions,
   StackRouter,
   type NavigationAction,
+  type NavigationState,
   type ParamListBase,
   type Router,
   type StackNavigationState,
@@ -15,6 +16,7 @@ import {
   stackHistoryRouter,
 } from "../utils/stackHistory";
 import { PageStateCache } from "../utils/PageStateCache";
+import { resetAccountTabState } from "../utils/accountNavigation";
 
 const options = {
   routeNames: ["Home", "Posts", "Comments", "Gallery"],
@@ -77,13 +79,14 @@ describe("forward page history", () => {
     let state = openPages();
     const key = getPageCacheKey(state.routes[2]);
     const nativeKeys = new Set([state.routes[2].key]);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 1000; i++) {
       state = apply(state, CommonActions.goBack());
       state = apply(state, { type: "GO_FORWARD" });
       expect(getPageCacheKey(state.routes[2])).toBe(key);
       nativeKeys.add(state.routes[2].key);
     }
-    expect(nativeKeys.size).toBe(6);
+    expect(nativeKeys.size).toBe(1001);
+    expect(state.routes[2].key.length <= key.length + 13).toBe(true);
   });
 
   test("preserves remaining forward pages when going back again", () => {
@@ -114,14 +117,82 @@ describe("forward page history", () => {
   }
 
   test("a parent account reset cannot revive an old forward branch", () => {
-    const back = apply(openPages(), CommonActions.goBack());
-    const reset = {
-      ...back,
-      index: 0,
-      routes: [{ name: "Home", key: "new-account" }],
+    const accountRoot = {
+      ...router.getInitialState(options),
+      routes: [{ name: "Home", key: "UserPage-A" }],
     };
-    expect(getFutureRoutes(reset)).toEqual([]);
-    expect(apply(reset, { type: "GO_FORWARD" })).toBe(reset);
+    const account = apply(
+      apply(
+        accountRoot,
+        StackActions.push("Comments", { url: "/comments/123" }),
+      ),
+      CommonActions.goBack(),
+    );
+    const postsTab = { key: "posts", name: "Posts", state: openPages() };
+    let tabs: NavigationState = {
+      stale: false,
+      type: "tab",
+      key: "tabs",
+      index: 0,
+      routeNames: ["Account", "Posts"],
+      routes: [{ key: "account", name: "Account", state: account }, postsTab],
+    };
+
+    expect(getFutureRoutes(account).length).toBe(1);
+    for (const name of ["B", "A"]) {
+      tabs = resetAccountTabState(tabs, {
+        name: "Home",
+        key: `UserPage-${name}`,
+      });
+      const partial = tabs.routes[0].state;
+      if (!partial) throw new Error("Missing account stack");
+      if (partial.stale === false) throw new Error("Expected a fresh stack");
+      const reset = router.getRehydratedState(
+        { ...partial, type: "stack" },
+        options,
+      );
+      expect(getFutureRoutes(reset)).toEqual([]);
+      expect(apply(reset, { type: "GO_FORWARD" })).toBe(reset);
+      expect(tabs.routes[1]).toBe(postsTab);
+      tabs = {
+        ...tabs,
+        routes: [{ ...tabs.routes[0], state: reset }, postsTab],
+      };
+    }
+  });
+
+  test("removing a middle route cannot become forward history from a newer page", () => {
+    let state = apply(openPages(), StackActions.push("Gallery"));
+    state = apply(state, CommonActions.goBack());
+    expect(getFutureRoutes(state).map((route) => route.name)).toEqual([
+      "Gallery",
+    ]);
+    const removedPage = state.routes[1];
+    const updated = apply(state, {
+      ...StackActions.pop(),
+      target: state.key,
+      source: removedPage.key,
+    });
+    expect(updated.routes.map((route) => route.name)).toEqual([
+      "Home",
+      "Comments",
+    ]);
+    expect(getFutureRoutes(updated)).toEqual([]);
+    expect(apply(updated, { type: "GO_FORWARD" })).toBe(updated);
+  });
+
+  test("a native multi-page pop retains only the dismissed trailing routes", () => {
+    const state = apply(openPages(), StackActions.push("Gallery"));
+    const updated = apply(state, {
+      ...StackActions.pop(2),
+      target: state.key,
+      source: state.routes[state.index].key,
+    });
+    expect(updated.routes.map((route) => route.name)).toEqual([
+      "Home",
+      "Posts",
+    ]);
+    expect(getFutureRoutes(updated)).toEqual(state.routes.slice(2));
   });
 
   test("two visits to the same URL have separate caches", () => {

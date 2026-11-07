@@ -18,6 +18,7 @@ import KeyStore from "../utils/KeyStore";
 import RedditURL from "../utils/RedditURL";
 import { PageTypeToNavName } from "../utils/PageTypeToNavName";
 import { ThemeContext } from "./SettingsContexts/ThemeContext";
+import { resetAccountTabState } from "../utils/accountNavigation";
 
 export const sentryNavigationIntegration = Sentry.reactNavigationIntegration({
   enableTimeToInitialDisplay: true,
@@ -141,24 +142,7 @@ export default function NavigationProvider({ children }: PropsWithChildren) {
           params: { url: "hydra://accounts" },
         };
     const currentState = navigation.current.getState();
-    const updatedRoutes = currentState.routes.map((route) => {
-      if (route.name === "Account") {
-        return {
-          ...route,
-          state: {
-            ...route.state,
-            index: 0,
-            routes: [newRoute],
-          },
-        };
-      }
-      return route;
-    });
-    const updatedState = {
-      ...currentState,
-      routes: updatedRoutes,
-    };
-    navigation.current?.reset(updatedState);
+    navigation.current.reset(resetAccountTabState(currentState, newRoute));
   };
 
   useEffect(() => {
