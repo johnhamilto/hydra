@@ -9,7 +9,7 @@ import {
 import { Touchable } from "react-native-gesture-handler";
 import { Post } from "../../../api/Posts";
 import { Image, ImageSource } from "expo-image";
-import { FlashList, FlashListRef } from "@shopify/flash-list";
+import { FlashList } from "@shopify/flash-list";
 import { TabBarScrollView } from "../../../contexts/TabBarInsetsContext";
 import { useGlassHeaderInset } from "../../../utils/liquidGlass";
 import Video from "./Video";
@@ -17,6 +17,7 @@ import { ThemeContext } from "../../../contexts/SettingsContexts/ThemeContext";
 import GetHydraProButton from "../GetHydraProButton";
 import { SubscriptionsContext } from "../../../contexts/SubscriptionsContext";
 import { MediaViewerContext } from "../../../contexts/MediaViewerContext";
+import { useListScrollRestoration } from "../../../utils/useListScrollRestoration";
 
 type GalleryItem = {
   mediaAspectRatio: number;
@@ -57,7 +58,6 @@ export default function GalleryComponent({
   const [isLoadingMore, setIsLoadingMore] = useState(true);
   const [hitFreeLimit, setHitFreeLimit] = useState(false);
 
-  const flashListRef = useRef<FlashListRef<GalleryItem>>(null);
   const headerInset = useGlassHeaderInset();
 
   /**
@@ -93,6 +93,11 @@ export default function GalleryComponent({
       }),
     [posts],
   );
+  const scrollRestoration = useListScrollRestoration<GalleryItem>(
+    "gallery-scroll",
+    galleryMedia.length,
+  );
+  const flashListRef = scrollRestoration.ref;
 
   const viewerMedia = posts.map((post) => {
     if (post.videos.length > 0) {
@@ -128,7 +133,7 @@ export default function GalleryComponent({
   return (
     <View style={styles.container}>
       <FlashList
-        ref={flashListRef}
+        {...scrollRestoration}
         // On the list rather than the wrapper so the wrapper flattens away; see TabBarScrollView
         onLayout={({ nativeEvent }) => {
           setContentDimensions({

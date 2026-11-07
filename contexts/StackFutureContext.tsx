@@ -1,74 +1,38 @@
-import {
-  EventMapCore,
-  NavigationRoute,
-  StackNavigationState,
-  EventListenerCallback,
-  useNavigation,
-} from "@react-navigation/native";
-import {
-  NativeStackNavigationEventMap,
-  NativeStackNavigationProp,
-} from "@react-navigation/native-stack";
-import {
-  createContext,
-  MutableRefObject,
-  PropsWithChildren,
-  useEffect,
-  useRef,
-} from "react";
+import { useNavigation, useNavigationState } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { createContext, PropsWithChildren, useEffect, useRef } from "react";
 import { useVerticalBarEdgeIOS } from "expo-status-bar";
 import { Animated, Dimensions } from "react-native";
 
 import { StackParamsList } from "../app/stack";
-
-type HandleBeforeRemoveType = EventListenerCallback<
-  NativeStackNavigationEventMap &
-    EventMapCore<StackNavigationState<StackParamsList>>,
-  "beforeRemove",
-  true
->;
-
-type StackFutureProviderProps = PropsWithChildren<{
-  futureRoutes: MutableRefObject<
-    NavigationRoute<StackParamsList, keyof StackParamsList>[]
-  >;
-}>;
+import { getFutureRoutes } from "../utils/stackHistory";
 
 export const StackFutureContext = createContext({
   clearFuture: () => {},
 });
 
-export function StackFutureProvider({
-  children,
-  futureRoutes,
-}: StackFutureProviderProps) {
+export function StackFutureProvider({ children }: PropsWithChildren) {
   const navigation =
     useNavigation<NativeStackNavigationProp<StackParamsList>>();
 
   const windowWidth = useRef(Dimensions.get("window").width);
   const gestureStart = useRef<{ x: number; y: number } | null>(null);
-
-  const handleBeforeRemove: HandleBeforeRemoveType = (e) => {
-    // A reset replaces the stack, so its removed routes aren't somewhere to go forward to
-    if (e.data.action.type === "RESET") {
-      futureRoutes.current = [];
-      return;
-    }
-    const popped = navigation.getState().routes.slice(-1)[0];
-    futureRoutes.current.push(popped);
-  };
-
-  useEffect(() => {
-    navigation.addListener("beforeRemove", handleBeforeRemove);
-    return () => {
-      navigation.removeListener("beforeRemove", handleBeforeRemove);
-    };
-  }, [navigation]);
+  const hasFuture = useNavigationState(
+    (state) =>
+      getFutureRoutes(state as ReturnType<typeof navigation.getState>).length >
+      0,
+  );
 
   const goForward = () => {
-    const popped = futureRoutes.current.pop();
-    if (!popped) return false;
-    navigation.push(popped.name as any, popped.params as any);
+    if (
+      !navigation.isFocused() ||
+      !getFutureRoutes(navigation.getState()).length
+    )
+      return false;
+    navigation.dispatch({
+      type: "GO_FORWARD",
+      target: navigation.getState().key,
+    });
     return true;
   };
 
@@ -79,7 +43,7 @@ export function StackFutureProvider({
   const verticalBarEdge = useVerticalBarEdgeIOS();
   useEffect(() => {
     const updateForwardButton = () => {
-      const showForward = !!verticalBarEdge && futureRoutes.current.length > 0;
+      const showForward = !!verticalBarEdge && hasFuture;
       navigation.setOptions({
         headerBackVisible: showForward || undefined,
         unstable_headerLeftItems: showForward
@@ -96,13 +60,13 @@ export function StackFutureProvider({
     };
     updateForwardButton();
     return navigation.addListener("focus", updateForwardButton);
-  }, [navigation, verticalBarEdge]);
+  }, [navigation, verticalBarEdge, hasFuture]);
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener(
       "change",
-      // We shouldn't have to type this as any. For some reason, the React Native library removed the types for this event
-      (event: any) => (windowWidth.current = event.window.width),
+      (event: { window: { width: number } }) =>
+        (windowWidth.current = event.window.width),
     );
     return () => subscription.remove();
   }, []);
@@ -110,7 +74,11 @@ export function StackFutureProvider({
   return (
     <StackFutureContext.Provider
       value={{
-        clearFuture: () => (futureRoutes.current = []),
+        clearFuture: () =>
+          navigation.dispatch({
+            type: "CLEAR_FUTURE",
+            target: navigation.getState().key,
+          }),
       }}
     >
       <Animated.View
@@ -128,7 +96,7 @@ export function StackFutureProvider({
         onMoveShouldSetResponder={() =>
           !!gestureStart.current &&
           windowWidth.current - gestureStart.current.x < 30 &&
-          futureRoutes.current.length > 0
+          hasFuture
         }
         onResponderMove={(e) => {
           if (!gestureStart.current) return false;

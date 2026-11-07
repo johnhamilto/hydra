@@ -1,4 +1,4 @@
-import { DependencyList, useContext, useEffect, useRef, useState } from "react";
+import { DependencyList, useContext, useEffect } from "react";
 
 import { RedditDataObject } from "../api/RedditData";
 import {
@@ -10,6 +10,7 @@ import { BannedUserError, UserDoesNotExistError } from "../api/User";
 import { NotLoggedInError } from "../api/gql/WebToken";
 import { AccountContext } from "../contexts/AccountContext";
 import { ToastContext } from "../contexts/ToastContext";
+import { usePageRef, usePageState } from "../contexts/PageStateContext";
 
 export type FilterFunction<T extends RedditDataObject> = (
   newData: T[],
@@ -74,19 +75,29 @@ export default function useRedditDataState<T extends RedditDataObject>({
 }: UseRedditDataStateProps<T>) {
   const { currentUser } = useContext(AccountContext);
   const { showToast } = useContext(ToastContext);
-  const unfilteredAfter = useRef<string | undefined>(undefined);
+  const unfilteredAfter = usePageRef<string | undefined>(
+    "list-cursor",
+    undefined,
+  );
   // Bumped by every refresh, so loads started before it are dropped instead
   // of landing in the new list (e.g. after a sort change).
-  const generation = useRef(0);
+  const generation = usePageRef("list-generation", 0);
   // The scroller asks for more as soon as a list is empty, so without this a
   // load-more would run alongside a refresh or the first page.
-  const inFlight = useRef<Promise<void> | null>(null);
+  const inFlight = usePageRef<Promise<void> | null>("list-request", null);
 
-  const [data, setData] = useState<T[]>([]);
-  const [fullyLoaded, setFullyLoaded] = useState(false);
-  const [hitFilterLimit, setHitFilterLimit] = useState(false);
-  const [accessFailure, setAccessFailure] = useState<AccessFailure | null>(
-    null,
+  const [data, setData] = usePageState<T[]>("list-data", () => []);
+  const [fullyLoaded, setFullyLoaded] = usePageState(
+    "list-complete",
+    () => false,
+  );
+  const [hitFilterLimit, setHitFilterLimit] = usePageState(
+    "list-filter-limit",
+    () => false,
+  );
+  const [accessFailure, setAccessFailure] = usePageState<AccessFailure | null>(
+    "list-access-failure",
+    () => null,
   );
 
   const applyFilters = async (newData: T[], filters: FilterFunction<T>[]) =>
@@ -138,7 +149,7 @@ export default function useRedditDataState<T extends RedditDataObject>({
     track(refresh(options));
 
   const loadNextPage = async () => {
-    if (hitFilterLimit) return;
+    if (hitFilterLimit || fullyLoaded) return;
     const started = generation.current;
     try {
       const page = await loadFilteredPage(unfilteredAfter.current, [
@@ -213,12 +224,21 @@ export default function useRedditDataState<T extends RedditDataObject>({
     });
   };
 
-  const initialLoad = useRef(true);
+  const previousDependencies = usePageRef<DependencyList | null>(
+    "list-dependencies",
+    null,
+  );
   useEffect(() => {
-    if (initialLoad.current) {
+    const previous = previousDependencies.current;
+    previousDependencies.current = [...refreshDependencies];
+    if (!previous) {
       loadMoreData();
-      initialLoad.current = false;
-    } else {
+    } else if (
+      previous.length !== refreshDependencies.length ||
+      previous.some(
+        (value, index) => !Object.is(value, refreshDependencies[index]),
+      )
+    ) {
       refreshData({ clearBeforeLoading: true });
     }
   }, refreshDependencies);
@@ -229,7 +249,7 @@ export default function useRedditDataState<T extends RedditDataObject>({
    * show, so a switch doesn't reload every open page at once.
    */
   const account = currentUser?.userName;
-  const lastAccount = useRef(account);
+  const lastAccount = usePageRef("list-account", account);
   useEffect(() => {
     if (lastAccount.current === account) return;
     lastAccount.current = account;

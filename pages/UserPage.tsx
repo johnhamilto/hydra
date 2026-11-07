@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { User, UserContent } from "../api/User";
@@ -20,6 +20,7 @@ import { useURLNavigation } from "../utils/navigation";
 import useRedditDataState from "../utils/useRedditDataState";
 import AccessFailureComponent from "../components/UI/AccessFailureComponent";
 import { SubredditContext } from "../contexts/SubredditContext";
+import { usePageRef, usePageState } from "../contexts/PageStateContext";
 
 export default function UserPage({ route }: StackPageProps<"UserPage">) {
   const url = route.params.url;
@@ -32,9 +33,15 @@ export default function UserPage({ route }: StackPageProps<"UserPage">) {
   const { currentUser } = useContext(AccountContext);
   const { subreddits, isSubscribed } = useContext(SubredditContext);
 
-  const [user, setUser] = useState<User>();
+  const [user, setUser] = usePageState<User | undefined>(
+    "user",
+    () => undefined,
+  );
   // What the base user page shows. Reddit has no mixed posts and comments feed.
-  const [contentType, setContentType] = useState<UserContentType>("posts");
+  const [contentType, setContentType] = usePageState<UserContentType>(
+    "user-content-type",
+    () => "posts",
+  );
 
   const {
     data: userContent,
@@ -71,8 +78,10 @@ export default function UserPage({ route }: StackPageProps<"UserPage">) {
       .then(setUser)
       .catch(() => setUser(undefined));
 
+  const lastAccount = usePageRef("user-account", currentUser?.userName);
   useEffect(() => {
-    loadUser();
+    if (!user || lastAccount.current !== currentUser?.userName) loadUser();
+    lastAccount.current = currentUser?.userName;
   }, [currentUser?.userName]);
 
   useEffect(() => {
