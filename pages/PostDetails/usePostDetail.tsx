@@ -40,21 +40,24 @@ export default function usePostDetail(url: string, isSplitView: boolean) {
   const { showToast } = useContext(ToastContext);
 
   const [postDetail, setPostDetail] = usePageState<PostDetail | undefined>(
-    `post:${url}`,
+    "post",
     () => undefined,
+    url,
   );
   const [loadError, setLoadError] = usePageState<Error | null>(
-    `post-error:${url}`,
+    "post-error",
     () => null,
+    url,
   );
   const [refreshing, setRefreshing] = usePageState(
-    `post-refreshing:${url}`,
+    "post-refreshing",
     () => true,
+    url,
   );
   // Split view changes the url of a mounted page, so an earlier post can
   // finish loading after a later one started.
-  const latestLoad = usePageRef(`post-load:${url}`, 0);
-  const initialized = usePageRef(`post-initialized:${url}`, false);
+  const latestLoad = usePageRef("post-load", 0);
+  const initialized = usePageRef("post-initialized", false, url);
 
   const loadPostDetails = async () => {
     const load = ++latestLoad.current;
@@ -185,9 +188,11 @@ export default function usePostDetail(url: string, isSplitView: boolean) {
     });
   };
 
+  const lastAccount = usePageRef("post-account", currentUser?.userName, url);
   useEffect(() => {
-    if (initialized.current) return;
+    if (initialized.current && !loadError) return;
     initialized.current = true;
+    lastAccount.current = currentUser?.userName;
     if (url) {
       modifyStat(Stat.POSTS_VIEWED, 1);
     }
@@ -195,7 +200,6 @@ export default function usePostDetail(url: string, isSplitView: boolean) {
   }, [url]);
 
   // Like list pages: logging in or switching accounts may fix the error.
-  const lastAccount = usePageRef(`post-account:${url}`, currentUser?.userName);
   useEffect(() => {
     if (lastAccount.current === currentUser?.userName) return;
     lastAccount.current = currentUser?.userName;

@@ -3,6 +3,10 @@
 declare module "bun:test" {
   export function describe(label: string, fn: () => void): void;
   export function test(label: string, fn: () => void | Promise<void>): void;
+  export function afterEach(fn: () => void | Promise<void>): void;
+  export const mock: {
+    module(path: string, factory: () => unknown): void;
+  };
   export function expect(value: unknown): {
     toBe(expected: unknown): void;
     toEqual(expected: unknown): void;

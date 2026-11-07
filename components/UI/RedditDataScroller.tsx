@@ -103,6 +103,15 @@ function RedditDataScroller<T extends RedditDataObject>(
       renderScrollComponent={TabBarScrollView}
       {...props}
       {...scrollRestoration}
+      onLoad={(info) => {
+        scrollRestoration.onLoad();
+        props.onLoad?.(info);
+      }}
+      onScrollBeginDrag={(event) => {
+        lastScrollPosition.current = event.nativeEvent.contentOffset.y;
+        scrollRestoration.onScrollBeginDrag();
+        props.onScrollBeginDrag?.(event);
+      }}
       contentContainerStyle={{
         minHeight: "100%",
         ...props.contentContainerStyle,
@@ -123,14 +132,16 @@ function RedditDataScroller<T extends RedditDataObject>(
       }
       scrollEventThrottle={100}
       onScroll={(e) => {
-        scrollRestoration.onScroll();
+        const countsAsScrolling = scrollRestoration.onScroll(e);
         props.onScroll?.(e);
         handleScrollForTabBar(e);
         const scrollPosition = e.nativeEvent.contentOffset.y;
-        modifyStat(
-          Stat.SCROLL_DISTANCE,
-          Math.abs(scrollPosition - lastScrollPosition.current),
-        );
+        if (countsAsScrolling) {
+          modifyStat(
+            Stat.SCROLL_DISTANCE,
+            Math.abs(scrollPosition - lastScrollPosition.current),
+          );
+        }
         lastScrollPosition.current = scrollPosition;
       }}
       onEndReachedThreshold={2}

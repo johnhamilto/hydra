@@ -85,6 +85,7 @@ export default function useRedditDataState<T extends RedditDataObject>({
   // The scroller asks for more as soon as a list is empty, so without this a
   // load-more would run alongside a refresh or the first page.
   const inFlight = usePageRef<Promise<void> | null>("list-request", null);
+  const hasLoaded = usePageRef("list-loaded", false);
 
   const [data, setData] = usePageState<T[]>("list-data", () => []);
   const [fullyLoaded, setFullyLoaded] = usePageState(
@@ -157,6 +158,7 @@ export default function useRedditDataState<T extends RedditDataObject>({
         ...filterRules,
       ]);
       if (started !== generation.current) return;
+      hasLoaded.current = true;
       unfilteredAfter.current = page.cursor;
       if (page.accessFailure) setAccessFailure(page.accessFailure);
       if (page.data === null) {
@@ -175,6 +177,8 @@ export default function useRedditDataState<T extends RedditDataObject>({
   const refresh = async ({ clearBeforeLoading = false }) => {
     const started = ++generation.current;
     if (clearBeforeLoading) {
+      hasLoaded.current = false;
+      unfilteredAfter.current = undefined;
       setData([]);
     }
     setAccessFailure(null);
@@ -183,6 +187,7 @@ export default function useRedditDataState<T extends RedditDataObject>({
     try {
       const page = await loadFilteredPage(undefined, filterRules);
       if (started !== generation.current) return;
+      hasLoaded.current = true;
       unfilteredAfter.current = page.cursor;
       if (page.accessFailure) setAccessFailure(page.accessFailure);
       setHitFilterLimit(page.data?.length === 0);
@@ -228,18 +233,23 @@ export default function useRedditDataState<T extends RedditDataObject>({
     "list-dependencies",
     null,
   );
+  const account = currentUser?.userName;
+  const lastAccount = usePageRef("list-account", account);
   useEffect(() => {
     const previous = previousDependencies.current;
     previousDependencies.current = [...refreshDependencies];
-    if (!previous) {
-      loadMoreData();
-    } else if (
-      previous.length !== refreshDependencies.length ||
-      previous.some(
-        (value, index) => !Object.is(value, refreshDependencies[index]),
-      )
+    if (
+      previous &&
+      (previous.length !== refreshDependencies.length ||
+        previous.some(
+          (value, index) => !Object.is(value, refreshDependencies[index]),
+        ))
     ) {
+      lastAccount.current = account;
       refreshData({ clearBeforeLoading: true });
+    } else if (!hasLoaded.current) {
+      lastAccount.current = account;
+      loadMoreData();
     }
   }, refreshDependencies);
 
@@ -248,8 +258,6 @@ export default function useRedditDataState<T extends RedditDataObject>({
    * subreddit) may load for the next one. Pages that loaded keep what they
    * show, so a switch doesn't reload every open page at once.
    */
-  const account = currentUser?.userName;
-  const lastAccount = usePageRef("list-account", account);
   useEffect(() => {
     if (lastAccount.current === account) return;
     lastAccount.current = account;
