@@ -33,14 +33,25 @@ export function PageStateCacheProvider({
   );
 }
 
-export function usePageState<T>(slot: string, initial: () => T) {
+export function usePageState<T>(
+  slot: string,
+  initial: () => T,
+  scope?: string,
+) {
   const cache = useContext(CacheContext);
   const page = useContext(PageStateContext);
   const entry = useMemo(
     () =>
-      cache && page ? cache.get(page, slot, initial) : new PageState(initial),
-    [cache, page, slot],
+      cache && page
+        ? cache.get(page, slot, initial, scope)
+        : new PageState(initial),
+    [cache, page, slot, scope],
   );
+  // Retire other URL variants only after this render commits. A suspended
+  // render must not evict the page that is still on screen.
+  useEffect(() => {
+    if (cache && page) cache.retainScope(page, slot, scope);
+  });
   const value = useSyncExternalStore(
     entry.subscribe,
     entry.getSnapshot,
@@ -49,7 +60,7 @@ export function usePageState<T>(slot: string, initial: () => T) {
   return [value, entry.set] as const;
 }
 
-export function usePageRef<T>(slot: string, initial: T) {
-  const [ref] = usePageState(slot, () => ({ current: initial }));
+export function usePageRef<T>(slot: string, initial: T, scope?: string) {
+  const [ref] = usePageState(slot, () => ({ current: initial }), scope);
   return ref;
 }

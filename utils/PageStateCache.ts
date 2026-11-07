@@ -27,20 +27,41 @@ export class PageState<T> {
 }
 
 export class PageStateCache {
-  private pages = new Map<string, Map<string, unknown>>();
+  private pages = new Map<
+    string,
+    Map<string, Map<string | undefined, unknown>>
+  >();
 
-  get<T>(page: string, slot: string, initial: () => T): PageState<T> {
+  get<T>(
+    page: string,
+    slot: string,
+    initial: () => T,
+    scope?: string,
+  ): PageState<T> {
     let entries = this.pages.get(page);
     if (!entries) {
       entries = new Map();
       this.pages.set(page, entries);
     }
-    let entry = entries.get(slot) as PageState<T> | undefined;
+    let scopes = entries.get(slot);
+    if (!scopes) {
+      scopes = new Map();
+      entries.set(slot, scopes);
+    }
+    let entry = scopes.get(scope) as PageState<T> | undefined;
     if (!entry) {
       entry = new PageState(initial);
-      entries.set(slot, entry);
+      scopes.set(scope, entry);
     }
     return entry;
+  }
+
+  retainScope(page: string, slot: string, scope: string | undefined) {
+    const scopes = this.pages.get(page)?.get(slot);
+    if (!scopes) return;
+    for (const key of scopes.keys()) {
+      if (key !== scope) scopes.delete(key);
+    }
   }
 
   retain(keys: string[]) {

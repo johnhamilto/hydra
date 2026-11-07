@@ -1,10 +1,4 @@
-import {
-  useContext,
-  useDeferredValue,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useContext, useDeferredValue, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ColorValue,
@@ -28,7 +22,7 @@ import {
 } from "../../contexts/TabBarInsetsContext";
 import AccessFailureComponent from "../../components/UI/AccessFailureComponent";
 import RedditURL from "../../utils/RedditURL";
-import { usePageRef } from "../../contexts/PageStateContext";
+import { usePostScrollRestoration } from "../../utils/usePostScrollRestoration";
 
 type PostDetailsProps =
   | StackPageProps<"PostDetailsPage">
@@ -43,23 +37,6 @@ function PostDetails(props: PostDetailsProps) {
 
   const { theme } = useContext(ThemeContext);
   const { handleScrollForTabBar } = useContext(TabScrollContext);
-  const scrollPosition = usePageRef<{ x: number; y: number } | undefined>(
-    `post-scroll:${url}`,
-    undefined,
-  );
-  const restorationRef = useRef({
-    url,
-    offset: scrollPosition.current,
-    restored: !scrollPosition.current,
-  });
-  if (restorationRef.current.url !== url) {
-    restorationRef.current = {
-      url,
-      offset: scrollPosition.current,
-      restored: !scrollPosition.current,
-    };
-  }
-  const scrollRestoration = restorationRef.current;
 
   const {
     postDetail,
@@ -82,6 +59,11 @@ function PostDetails(props: PostDetailsProps) {
     scrollChange,
     collapseThread,
   } = useCommentScrolling(postDetail, changeComment);
+  const scrollRestoration = usePostScrollRestoration(
+    url,
+    scrollView,
+    !!postDetail && postDetail === deferredPostDetail,
+  );
 
   /**
    * The tintColor prop on the RefreshControl component is broken in React
@@ -102,20 +84,7 @@ function PostDetails(props: PostDetailsProps) {
         <TabBarScrollView
           key={url}
           ref={scrollView}
-          contentOffset={scrollRestoration.offset}
-          onContentSizeChange={() => {
-            if (
-              scrollRestoration.restored ||
-              !scrollView.current ||
-              !scrollRestoration.offset
-            )
-              return;
-            scrollView.current.scrollTo({
-              ...scrollRestoration.offset,
-              animated: false,
-            });
-            scrollRestoration.restored = true;
-          }}
+          {...scrollRestoration}
           refreshControl={
             <RefreshControl
               tintColor={refreshControlColor}
@@ -124,9 +93,7 @@ function PostDetails(props: PostDetailsProps) {
             />
           }
           onScroll={(e) => {
-            if (scrollRestoration.restored) {
-              scrollPosition.current = e.nativeEvent.contentOffset;
-            }
+            scrollRestoration.onScroll(e);
             handleScrollForTabBar(e);
           }}
           scrollEventThrottle={16}

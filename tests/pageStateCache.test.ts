@@ -57,4 +57,45 @@ describe("page state cache", () => {
     expect(cache.get("two", "scroll", () => 0).getSnapshot()).toBe(0);
     expect(cache.get("one", "comments", () => []).getSnapshot()).toEqual([]);
   });
+
+  test("a committed URL change releases previous comment trees", () => {
+    const cache = new PageStateCache();
+    const initial = cache.get("feed", "post", () => ["large tree"], "first");
+    for (let i = 0; i < 100; i++) {
+      const url = `post-${i}`;
+      cache.get("feed", "post", () => [url], url);
+      cache.retainScope("feed", "post", url);
+    }
+    expect(
+      cache.get<string[]>("feed", "post", () => [], "first") === initial,
+    ).toBe(false);
+    expect(
+      cache.get("feed", "post", () => [], "post-99").getSnapshot(),
+    ).toEqual(["post-99"]);
+  });
+
+  test("an uncommitted URL change does not evict visible state", () => {
+    const cache = new PageStateCache();
+    const visible = cache.get("feed", "post", () => "visible", "first");
+    cache.get("feed", "post", () => "uncommitted", "second");
+    expect(cache.get("feed", "post", () => "replacement", "first")).toBe(
+      visible,
+    );
+    cache.retainScope("feed", "post", "first");
+    expect(
+      cache.get("feed", "post", () => "new request", "second").getSnapshot(),
+    ).toBe("new request");
+  });
+
+  test("a late response cannot replace a newer URL's cache", () => {
+    const cache = new PageStateCache();
+    const old = cache.get("feed", "post", () => "loading", "first");
+    const current = cache.get("feed", "post", () => "current", "second");
+    cache.retainScope("feed", "post", "second");
+    old.set("late response");
+    expect(current.getSnapshot()).toBe("current");
+    expect(
+      cache.get("feed", "post", () => "reload", "first").getSnapshot(),
+    ).toBe("reload");
+  });
 });
