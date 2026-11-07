@@ -18,6 +18,7 @@ import {
   TabBarSpacer,
 } from "../../contexts/TabBarInsetsContext";
 import { modifyStat, Stat } from "../../db/functions/Stats";
+import { useListScrollRestoration } from "../../utils/useListScrollRestoration";
 
 /**
  * Future note for when I'm an idiot and the scroller gets all glitchy again.
@@ -53,6 +54,10 @@ export default function RedditDataScroller<T extends RedditDataObject>(
 ) {
   const { theme } = useContext(ThemeContext);
   const { handleScrollForTabBar } = useContext(TabScrollContext);
+  const scrollRestoration = useListScrollRestoration<T>(
+    "list-scroll",
+    props.data.length,
+  );
 
   const [refreshing, setRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(
@@ -92,6 +97,7 @@ export default function RedditDataScroller<T extends RedditDataObject>(
     <FlashList<T>
       renderScrollComponent={TabBarScrollView}
       {...props}
+      {...scrollRestoration}
       contentContainerStyle={{
         minHeight: "100%",
         ...props.contentContainerStyle,
@@ -111,6 +117,8 @@ export default function RedditDataScroller<T extends RedditDataObject>(
       }
       scrollEventThrottle={100}
       onScroll={(e) => {
+        scrollRestoration.onScroll();
+        props.onScroll?.(e);
         handleScrollForTabBar(e);
         const scrollPosition = e.nativeEvent.contentOffset.y;
         modifyStat(

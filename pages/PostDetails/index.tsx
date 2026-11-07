@@ -1,4 +1,10 @@
-import { useContext, useDeferredValue, useEffect, useState } from "react";
+import {
+  useContext,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   ColorValue,
@@ -22,6 +28,7 @@ import {
 } from "../../contexts/TabBarInsetsContext";
 import AccessFailureComponent from "../../components/UI/AccessFailureComponent";
 import RedditURL from "../../utils/RedditURL";
+import { usePageRef } from "../../contexts/PageStateContext";
 
 type PostDetailsProps =
   | StackPageProps<"PostDetailsPage">
@@ -36,6 +43,23 @@ function PostDetails(props: PostDetailsProps) {
 
   const { theme } = useContext(ThemeContext);
   const { handleScrollForTabBar } = useContext(TabScrollContext);
+  const scrollPosition = usePageRef<{ x: number; y: number } | undefined>(
+    `post-scroll:${url}`,
+    undefined,
+  );
+  const restorationRef = useRef({
+    url,
+    offset: scrollPosition.current,
+    restored: !scrollPosition.current,
+  });
+  if (restorationRef.current.url !== url) {
+    restorationRef.current = {
+      url,
+      offset: scrollPosition.current,
+      restored: !scrollPosition.current,
+    };
+  }
+  const scrollRestoration = restorationRef.current;
 
   const {
     postDetail,
@@ -76,7 +100,22 @@ function PostDetails(props: PostDetailsProps) {
     <View style={styles.postDetailsOuterContainer}>
       {postDetail ? (
         <TabBarScrollView
+          key={url}
           ref={scrollView}
+          contentOffset={scrollRestoration.offset}
+          onContentSizeChange={() => {
+            if (
+              scrollRestoration.restored ||
+              !scrollView.current ||
+              !scrollRestoration.offset
+            )
+              return;
+            scrollView.current.scrollTo({
+              ...scrollRestoration.offset,
+              animated: false,
+            });
+            scrollRestoration.restored = true;
+          }}
           refreshControl={
             <RefreshControl
               tintColor={refreshControlColor}
@@ -84,7 +123,13 @@ function PostDetails(props: PostDetailsProps) {
               onRefresh={() => loadPostDetails()}
             />
           }
-          onScroll={(e) => handleScrollForTabBar(e)}
+          onScroll={(e) => {
+            if (scrollRestoration.restored) {
+              scrollPosition.current = e.nativeEvent.contentOffset;
+            }
+            handleScrollForTabBar(e);
+          }}
+          scrollEventThrottle={16}
           contentContainerStyle={{
             // Room for the scroll-to-next button; TabBarSpacer clears the tab bar
             paddingBottom: 60,

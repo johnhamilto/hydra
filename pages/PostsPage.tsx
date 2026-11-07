@@ -28,6 +28,7 @@ import { useSplitViewSupport } from "../utils/useSplitViewSupport";
 import { getPosts } from "../api/gql/Posts";
 import KeyStore from "../utils/KeyStore";
 import { LAST_HOME_FEED_KEY } from "../constants/SettingsKeys";
+import { usePageState } from "../contexts/PageStateContext";
 
 export default function PostsPage({
   route,
@@ -62,7 +63,10 @@ export default function PostsPage({
   const showSplitView = splitViewEnabled && windowSupportsSplitView;
 
   const [rerenderCount, rerender] = useState(0);
-  const [postDetailsURL, setPostDetailsURL] = useState<string | null>(null);
+  const [postDetailsURL, setPostDetailsURL] = usePageState<string | null>(
+    "split-post",
+    () => null,
+  );
 
   const shouldFilterSeen = getHideSeenURLStatus(url);
 

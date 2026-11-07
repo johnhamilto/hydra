@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect } from "react";
 
 import {
   Comment,
@@ -27,6 +27,7 @@ import {
 import RedditURL from "../../utils/RedditURL";
 import { useURLNavigation } from "../../utils/navigation";
 import { isAccessFailure } from "../../utils/useRedditDataState";
+import { usePageRef, usePageState } from "../../contexts/PageStateContext";
 
 /**
  * Owns the postDetail state and every mutation of the comment tree. The tree
@@ -38,12 +39,22 @@ export default function usePostDetail(url: string, isSplitView: boolean) {
   const { currentUser } = useContext(AccountContext);
   const { showToast } = useContext(ToastContext);
 
-  const [postDetail, setPostDetail] = useState<PostDetail>();
-  const [loadError, setLoadError] = useState<Error | null>(null);
-  const [refreshing, setRefreshing] = useState(true);
+  const [postDetail, setPostDetail] = usePageState<PostDetail | undefined>(
+    `post:${url}`,
+    () => undefined,
+  );
+  const [loadError, setLoadError] = usePageState<Error | null>(
+    `post-error:${url}`,
+    () => null,
+  );
+  const [refreshing, setRefreshing] = usePageState(
+    `post-refreshing:${url}`,
+    () => true,
+  );
   // Split view changes the url of a mounted page, so an earlier post can
   // finish loading after a later one started.
-  const latestLoad = useRef(0);
+  const latestLoad = usePageRef(`post-load:${url}`, 0);
+  const initialized = usePageRef(`post-initialized:${url}`, false);
 
   const loadPostDetails = async () => {
     const load = ++latestLoad.current;
@@ -78,13 +89,15 @@ export default function usePostDetail(url: string, isSplitView: boolean) {
     }
     setLoadError(null);
     setPostDetail(newPostDetail);
+  };
 
-    if (isSplitView) return;
+  useEffect(() => {
+    if (isSplitView || !postDetail) return;
     const contextOptions: ContextTypes[] = [
-      ...(currentUser?.userName === newPostDetail.author && newPostDetail.text
+      ...(currentUser?.userName === postDetail.author && postDetail.text
         ? ["Edit" as ContextTypes]
         : []),
-      ...(currentUser?.userName === newPostDetail.author
+      ...(currentUser?.userName === postDetail.author
         ? ["Delete" as ContextTypes]
         : []),
       "Report",
@@ -108,11 +121,11 @@ export default function usePostDetail(url: string, isSplitView: boolean) {
           navigation={navigation}
           sortOptions={contextSort}
           contextOptions={contextOptions}
-          pageData={newPostDetail}
+          pageData={postDetail}
         />
       ),
     });
-  };
+  }, [postDetail, url, isSplitView, currentUser?.userName]);
 
   /**
    * Mutations run at call time against the tree generation this closure was
@@ -173,6 +186,8 @@ export default function usePostDetail(url: string, isSplitView: boolean) {
   };
 
   useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
     if (url) {
       modifyStat(Stat.POSTS_VIEWED, 1);
     }
@@ -180,7 +195,10 @@ export default function usePostDetail(url: string, isSplitView: boolean) {
   }, [url]);
 
   // Like list pages: logging in or switching accounts may fix the error.
+  const lastAccount = usePageRef(`post-account:${url}`, currentUser?.userName);
   useEffect(() => {
+    if (lastAccount.current === currentUser?.userName) return;
+    lastAccount.current = currentUser?.userName;
     if (isAccessFailure(loadError)) loadPostDetails();
   }, [currentUser?.userName]);
 

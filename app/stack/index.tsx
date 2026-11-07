@@ -1,9 +1,8 @@
-import { NavigationRoute } from "@react-navigation/native";
 import {
   createNativeStackNavigator,
   NativeStackScreenProps,
 } from "@react-navigation/native-stack";
-import React, { Fragment, useContext, useRef } from "react";
+import React, { Fragment, useContext } from "react";
 import { View } from "react-native";
 
 import AccountsScreen from "./AccountsScreen";
@@ -34,6 +33,11 @@ import {
 } from "../../utils/liquidGlass";
 import GalleryScreen from "./GalleryScreen";
 import ChatScreen from "./ChatScreen";
+import {
+  PageStateCacheProvider,
+  PageStateContext,
+} from "../../contexts/PageStateContext";
+import { getPageCacheKey, stackHistoryRouter } from "../../utils/stackHistory";
 
 export type StackParamsList = {
   Subreddits: undefined;
@@ -143,16 +147,13 @@ const GLASS_HEADER_ROUTES = new Set<keyof StackParamsList>([
 export type StackPageProps<Pages extends keyof StackParamsList> =
   NativeStackScreenProps<StackParamsList, Pages>;
 
+const StackNavigator = createNativeStackNavigator<StackParamsList>();
+
 export default function Stack() {
-  const StackNavigator = createNativeStackNavigator<StackParamsList>();
   const { theme } = useContext(ThemeContext);
   const { swipeAnywhereToNavigate } = useContext(GesturesContext);
 
   const tabBarInsets = useTabBarInsets();
-
-  const futureRoutes = useRef<
-    NavigationRoute<StackParamsList, keyof StackParamsList>[]
-  >([]);
 
   const screens = [
     SubredditsScreen,
@@ -182,6 +183,12 @@ export default function Stack() {
     // https://github.com/expo/expo/issues/39969
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       <StackNavigator.Navigator
+        UNSTABLE_router={stackHistoryRouter}
+        layout={({ state, children }) => (
+          <PageStateCacheProvider state={state}>
+            {children}
+          </PageStateCacheProvider>
+        )}
         screenOptions={({ route }) => ({
           headerTintColor: theme.iconOrTextButton.toString(),
           navigationBarColor: theme.background.toString(),
@@ -206,14 +213,16 @@ export default function Stack() {
           },
         })}
         screenLayout={({ route, children }) => (
-          <StackFutureProvider futureRoutes={futureRoutes}>
-            <GlassHeaderInsetProvider>
-              {children}
-              {IS_LIQUID_GLASS && GLASS_HEADER_ROUTES.has(route.name) ? (
-                <StatusBarTapShield />
-              ) : null}
-            </GlassHeaderInsetProvider>
-          </StackFutureProvider>
+          <PageStateContext.Provider value={getPageCacheKey(route)}>
+            <StackFutureProvider>
+              <GlassHeaderInsetProvider>
+                {children}
+                {IS_LIQUID_GLASS && GLASS_HEADER_ROUTES.has(route.name) ? (
+                  <StatusBarTapShield />
+                ) : null}
+              </GlassHeaderInsetProvider>
+            </StackFutureProvider>
+          </PageStateContext.Provider>
         )}
       >
         {screens}
