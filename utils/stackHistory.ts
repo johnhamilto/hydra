@@ -11,6 +11,7 @@ type PageRoute<Params extends ParamListBase> = NavigationRoute<
   keyof Params
 > & {
   pageCacheKey?: string;
+  restoreCount?: number;
 };
 
 type HistoryState<Params extends ParamListBase> =
@@ -43,12 +44,14 @@ export function stackHistoryRouter<
       if (action.type === "GO_FORWARD") {
         const [next, ...remaining] = futureRoutes;
         if (!next) return state;
+        const restoreCount = (next.restoreCount ?? 0) + 1;
         // A dismissed native screen cannot be reused. Its replacement shares
         // the page cache, but needs a fresh native route identity.
         const route = {
           ...next,
-          key: `${next.key}-forward`,
+          key: `${getPageCacheKey(next)}-forward-${restoreCount}`,
           pageCacheKey: getPageCacheKey(next),
+          restoreCount,
         } as PageRoute<Params>;
         return {
           ...state,
@@ -70,10 +73,10 @@ export function stackHistoryRouter<
         ["GO_BACK", "POP", "POP_TO_TOP", "POP_TO"].includes(action.type)
       ) {
         const retained = new Set(next.routes.map((route) => route.key));
-        // Only a pop to an existing page belongs in forward history.
+        // Only removed trailing pages belong after the new active page.
         if (
-          next.routes.every((route) =>
-            state.routes.some((previous) => previous.key === route.key),
+          next.routes.every(
+            (route, index) => state.routes[index]?.key === route.key,
           )
         ) {
           return {
@@ -85,6 +88,7 @@ export function stackHistoryRouter<
             futureAnchor: next.routes[next.index]?.key,
           };
         }
+        return { ...next, futureRoutes: [], futureAnchor: undefined };
       }
 
       if (
