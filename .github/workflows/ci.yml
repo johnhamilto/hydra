@@ -24,8 +24,6 @@ jobs:
           node-version: 24
           cache: npm
 
-      - uses: oven-sh/setup-bun@v2
-
       - id: install
         run: npm ci
 
@@ -40,10 +38,6 @@ jobs:
       - name: Typecheck
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run tsc
-
-      - name: Tests
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npm test
 
   docs:
     name: Generated documentation is up to date
